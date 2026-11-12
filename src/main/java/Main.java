@@ -10,8 +10,13 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class Main {
+
+    // Shared storage for all Redis key-value pairs
+    private static final Map<String, String> storage = new ConcurrentHashMap<>();
 
     public static void main(String[] args) {
 
@@ -51,7 +56,7 @@ public class Main {
 
             while (true) {
 
-                // Read the incoming RESP command
+                // Read incoming RESP command
                 List<String> command = readCommand(inputStream);
 
                 if (command == null) {
@@ -62,10 +67,9 @@ public class Main {
                     continue;
                 }
 
-                // Extract the command name
                 String commandName = command.get(0);
 
-                // Handle PING
+                // PING command
                 if (commandName.equalsIgnoreCase("PING")) {
 
                     outputStream.write(
@@ -74,27 +78,59 @@ public class Main {
 
                 }
 
-                // Handle ECHO
+                // ECHO command
                 else if (commandName.equalsIgnoreCase("ECHO")
                         && command.size() == 2) {
 
                     String message = command.get(1);
 
-                    byte[] messageBytes = message.getBytes(StandardCharsets.UTF_8);
-
-                    String responseHeader = "$" + messageBytes.length + "\r\n";
-
-                    outputStream.write(
-                        responseHeader.getBytes(StandardCharsets.UTF_8)
-                    );
-
-                    outputStream.write(messageBytes);
-
-                    outputStream.write("\r\n".getBytes(StandardCharsets.UTF_8));
+                    writeBulkString(outputStream, message);
 
                 }
 
-                // Handle unknown commands
+                // SET command
+                else if (commandName.equalsIgnoreCase("SET")
+                        && command.size() == 3) {
+
+                    String key = command.get(1);
+                    String value = command.get(2);
+
+                    // Store the key and value
+                    storage.put(key, value);
+
+                    // Send OK response
+                    outputStream.write(
+                        "+OK\r\n".getBytes(StandardCharsets.UTF_8)
+                    );
+
+                }
+
+                // GET command
+                else if (commandName.equalsIgnoreCase("GET")
+                        && command.size() == 2) {
+
+                    String key = command.get(1);
+
+                    // Retrieve the value
+                    String value = storage.get(key);
+
+                    if (value == null) {
+
+                        // Key does not exist
+                        outputStream.write(
+                            "$-1\r\n".getBytes(StandardCharsets.UTF_8)
+                        );
+
+                    } else {
+
+                        // Key exists: return its value
+                        writeBulkString(outputStream, value);
+
+                    }
+
+                }
+
+                // Unknown or incorrectly formatted command
                 else {
 
                     outputStream.write(
@@ -108,6 +144,19 @@ public class Main {
         } catch (IOException e) {
             System.out.println("Client connection error: " + e.getMessage());
         }
+    }
+
+    // Write a RESP bulk string
+    private static void writeBulkString(OutputStream outputStream, String value)
+            throws IOException {
+
+        byte[] valueBytes = value.getBytes(StandardCharsets.UTF_8);
+
+        String header = "$" + valueBytes.length + "\r\n";
+
+        outputStream.write(header.getBytes(StandardCharsets.UTF_8));
+        outputStream.write(valueBytes);
+        outputStream.write("\r\n".getBytes(StandardCharsets.UTF_8));
     }
 
     // Read and parse a RESP command
