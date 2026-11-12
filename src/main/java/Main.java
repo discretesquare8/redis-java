@@ -14,6 +14,10 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class Main {
+    public static class Redisentry{
+      string value;
+      long expirytime;
+    }
 
     // Shared storage for all Redis key-value pairs
     private static final Map<String, String> storage = new ConcurrentHashMap<>();
