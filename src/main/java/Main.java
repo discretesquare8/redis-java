@@ -14,13 +14,21 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class Main {
-    public static class Redisentry{
-      string value;
-      long expirytime;
+
+    // Represents one Redis entry
+    public static class RedisEntry {
+        String value;
+        long expiryTime;
+
+        public RedisEntry(String value, long expiryTime) {
+            this.value = value;
+            this.expiryTime = expiryTime;
+        }
     }
 
-    // Shared storage for all Redis key-value pairs
-    private static final Map<String, String> storage = new ConcurrentHashMap<>();
+    // Shared storage for all clients
+    private static final Map<String, RedisEntry> storage =
+            new ConcurrentHashMap<>();
 
     public static void main(String[] args) {
 
@@ -31,12 +39,10 @@ public class Main {
             serverSocket.setReuseAddress(true);
             serverSocket.bind(new InetSocketAddress(port));
 
-            // Keep accepting new clients
             while (true) {
 
                 Socket clientSocket = serverSocket.accept();
 
-                // Create a separate thread for each client
                 Thread clientThread = new Thread(() -> {
                     handleClient(clientSocket);
                 });
@@ -49,18 +55,17 @@ public class Main {
         }
     }
 
-    // Handle an individual client
     private static void handleClient(Socket clientSocket) {
 
         try (
             Socket socket = clientSocket;
-            InputStream inputStream = new BufferedInputStream(socket.getInputStream());
+            InputStream inputStream =
+                    new BufferedInputStream(socket.getInputStream());
             OutputStream outputStream = socket.getOutputStream()
         ) {
 
             while (true) {
 
-                // Read incoming RESP command
                 List<String> command = readCommand(inputStream);
 
                 if (command == null) {
@@ -73,85 +78,117 @@ public class Main {
 
                 String commandName = command.get(0);
 
-                // PING command
+                // PING
                 if (commandName.equalsIgnoreCase("PING")) {
 
                     outputStream.write(
-                        "+PONG\r\n".getBytes(StandardCharsets.UTF_8)
+                            "+PONG\r\n".getBytes(StandardCharsets.UTF_8)
                     );
 
                 }
 
-                // ECHO command
+                // ECHO
                 else if (commandName.equalsIgnoreCase("ECHO")
                         && command.size() == 2) {
 
                     String message = command.get(1);
-
                     writeBulkString(outputStream, message);
 
                 }
 
-                // SET command
+                // SET
                 else if (commandName.equalsIgnoreCase("SET")
-                        && command.size() == 3) {
+                        && (command.size() == 3 || command.size() == 5)) {
 
                     String key = command.get(1);
                     String value = command.get(2);
 
-                    // Store the key and value
-                    storage.put(key, value);
+                    // Default: key never expires
+                    long expiryTime = -1;
 
-                    // Send OK response
+                    // Check for PX option
+                    if (command.size() == 5
+                            && command.get(3).equalsIgnoreCase("PX")) {
+
+                        long expiryMilliseconds =
+                                Long.parseLong(command.get(4));
+
+                        expiryTime = System.currentTimeMillis()
+                                + expiryMilliseconds;
+
+                    } else if (command.size() == 5) {
+
+                        outputStream.write(
+                                "-ERR unsupported option\r\n"
+                                        .getBytes(StandardCharsets.UTF_8)
+                        );
+
+                        outputStream.flush();
+                        continue;
+                    }
+
+                    RedisEntry entry = new RedisEntry(value, expiryTime);
+
+                    storage.put(key, entry);
+
                     outputStream.write(
-                        "+OK\r\n".getBytes(StandardCharsets.UTF_8)
+                            "+OK\r\n".getBytes(StandardCharsets.UTF_8)
                     );
 
                 }
 
-                // GET command
+                // GET
                 else if (commandName.equalsIgnoreCase("GET")
                         && command.size() == 2) {
 
                     String key = command.get(1);
 
-                    // Retrieve the value
-                    String value = storage.get(key);
+                    RedisEntry entry = storage.get(key);
 
-                    if (value == null) {
+                    if (entry == null) {
 
-                        // Key does not exist
                         outputStream.write(
-                            "$-1\r\n".getBytes(StandardCharsets.UTF_8)
+                                "$-1\r\n".getBytes(StandardCharsets.UTF_8)
+                        );
+
+                    } else if (entry.expiryTime != -1
+                            && System.currentTimeMillis() >= entry.expiryTime) {
+
+                        // Remove expired key
+                        storage.remove(key, entry);
+
+                        outputStream.write(
+                                "$-1\r\n".getBytes(StandardCharsets.UTF_8)
                         );
 
                     } else {
 
-                        // Key exists: return its value
-                        writeBulkString(outputStream, value);
+                        writeBulkString(outputStream, entry.value);
 
                     }
 
                 }
 
-                // Unknown or incorrectly formatted command
+                // Unknown command
                 else {
 
                     outputStream.write(
-                        "-ERR unknown command\r\n".getBytes(StandardCharsets.UTF_8)
+                            "-ERR unknown command\r\n"
+                                    .getBytes(StandardCharsets.UTF_8)
                     );
                 }
 
                 outputStream.flush();
             }
 
-        } catch (IOException e) {
+        } catch (IOException | NumberFormatException e) {
             System.out.println("Client connection error: " + e.getMessage());
         }
     }
 
-    // Write a RESP bulk string
-    private static void writeBulkString(OutputStream outputStream, String value)
+    // Write RESP bulk string
+    private static void writeBulkString(
+            OutputStream outputStream, String value)
             throws IOException {
 
         byte[] valueBytes = value.getBytes(StandardCharsets.UTF_8);
@@ -163,7 +200,7 @@ public class Main {
         outputStream.write("\r\n".getBytes(StandardCharsets.UTF_8));
     }
 
-    // Read and parse a RESP command
+    // Read RESP command
     private static List<String> readCommand(InputStream inputStream)
             throws IOException {
 
@@ -177,7 +214,8 @@ public class Main {
             throw new IOException("Expected RESP array");
         }
 
-        int numberOfElements = Integer.parseInt(arrayHeader.substring(1));
+        int numberOfElements =
+                Integer.parseInt(arrayHeader.substring(1));
 
         List<String> command = new ArrayList<>();
 
@@ -210,7 +248,7 @@ public class Main {
         return command;
     }
 
-    // Read a line until CRLF
+    // Read line until CRLF
     private static String readLine(InputStream inputStream)
             throws IOException {
 
