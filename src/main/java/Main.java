@@ -252,6 +252,50 @@ public class Main {
                 );
                 }
 
+
+
+                // LPOP
+                else if (commandName.equalsIgnoreCase("LPOP")
+                  && command.size() == 2) {
+
+                String key = command.get(1);
+
+                List<String> list = lists.get(key);
+
+                if (list == null) {
+
+                  outputStream.write(
+                          "$-1\r\n".getBytes(StandardCharsets.UTF_8)
+                  );
+
+                } else {
+
+                  String removedElement;
+
+                  synchronized (list) {
+
+                      if (list.isEmpty()) {
+                          removedElement = null;
+                      } else {
+                          removedElement = list.remove(0);
+                      }
+                  }
+
+                  if (removedElement == null) {
+
+                      outputStream.write(
+                              "$-1\r\n".getBytes(StandardCharsets.UTF_8)
+                      );
+
+                  } else {
+
+                      writeBulkString(outputStream, removedElement);
+
+                  }
+                }
+                }
+
+
                 
                 // LRANGE
                 else if (commandName.equalsIgnoreCase("LRANGE")
