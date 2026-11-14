@@ -8,6 +8,7 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -316,6 +317,53 @@ public class Main {
                     writeArray(outputStream, removedElements);
                   }
                   }
+
+                  // BLPOP
+                  else if (commandName.equalsIgnoreCase("BLPOP")
+                          && command.size() == 3) {
+
+                      String key = command.get(1);
+
+                      BlockingWaiter waiter = new BlockingWaiter();
+
+                      synchronized (blockingLock) {
+
+                          List<String> list = lists.get(key);
+
+                          // If an element is already available, pop it immediately
+                          if (list != null) {
+
+                              synchronized (list) {
+
+                                  if (!list.isEmpty()) {
+                                      waiter.element = list.remove(0);
+                                      waiter.completed = true;
+                                  }
+                              }
+                          }
+
+                          // Otherwise, register this client as a waiter
+                          if (!waiter.completed) {
+
+                              blockedClients.computeIfAbsent(
+                                      key,
+                                      k -> new ArrayDeque<>()
+                              ).add(waiter);
+
+                              // Wait until another client pushes an element
+                              while (!waiter.completed) {
+                                  blockingLock.wait();
+                              }
+                          }
+                      }
+
+                      // Return [list_key, popped_element]
+                      writeArray(
+                              outputStream,
+                              List.of(key, waiter.element)
+                      );
+                  }
+
 
 
 
