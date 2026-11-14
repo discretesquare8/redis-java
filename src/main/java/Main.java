@@ -172,28 +172,63 @@ public class Main {
                 }
 
                 // RPUSH
-                
-                else if (commandName.equalsIgnoreCase("RPUSH") && command.size() >= 3) {
-                  String key = command.get(1);
+                else if (commandName.equalsIgnoreCase("RPUSH")
+                        && command.size() >= 3) {
 
-                  List<String> list = lists.computeIfAbsent(
-                          key,
-                          k -> Collections.synchronizedList(new ArrayList<>())
-                  );
+                    String key = command.get(1);
 
-                  int length;
+                    List<String> list = lists.computeIfAbsent(
+                            key,
+                            k -> Collections.synchronizedList(new ArrayList<>())
+                    );
 
-                  synchronized (list) {
-                      for (int i = 2; i < command.size(); i++) {
-                          list.add(command.get(i));
-                      }
+                    int length;
 
-                      length = list.size();
-                  }
+                    synchronized (list) {
 
-                  outputStream.write((":" + length + "\r\n").getBytes(StandardCharsets.UTF_8));
+                        for (int i = 2; i < command.size(); i++) {
+                            list.add(command.get(i));
+                        }
+
+                        length = list.size();
+                    }
+
+                    outputStream.write(
+                            (":" + length + "\r\n").getBytes(StandardCharsets.UTF_8)
+                    );
                 }
 
+                // LRANGE
+                else if (commandName.equalsIgnoreCase("LRANGE")
+                        && command.size() == 4) {
+
+                    String key = command.get(1);
+
+                    int start = Integer.parseInt(command.get(2));
+                    int stop = Integer.parseInt(command.get(3));
+
+                    List<String> list = lists.get(key);
+
+                    if (list == null || start >= list.size() || start > stop) {
+
+                        writeArray(outputStream, Collections.emptyList());
+
+                    } else {
+
+                        List<String> result = new ArrayList<>();
+
+                        synchronized (list) {
+
+                            int end = Math.min(stop, list.size() - 1);
+
+                            for (int i = start; i <= end; i++) {
+                                result.add(list.get(i));
+                            }
+                        }
+
+                        writeArray(outputStream, result);
+                    }
+                }
 
                 // Unknown command
                 else {
@@ -224,6 +259,20 @@ public class Main {
         outputStream.write(header.getBytes(StandardCharsets.UTF_8));
         outputStream.write(valueBytes);
         outputStream.write("\r\n".getBytes(StandardCharsets.UTF_8));
+    }
+
+    // Write RESP array
+    private static void writeArray(
+            OutputStream outputStream, List<String> elements)
+            throws IOException {
+
+        outputStream.write(
+                ("*" + elements.size() + "\r\n").getBytes(StandardCharsets.UTF_8)
+        );
+
+        for (String element : elements) {
+            writeBulkString(outputStream, element);
+        }
     }
 
     // Read RESP command
