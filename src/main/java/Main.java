@@ -14,6 +14,8 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayDeque;
+import java.util.Queue;
 
 public class Main {
 
@@ -59,6 +61,29 @@ public class Main {
         } catch (IOException e) {
             System.out.println("IOException: " + e.getMessage());
         }
+    }
+
+    // Serve waiting clients when elements become available
+    private static void serveBlockedClients(String key, List<String> list) {
+
+      Queue<BlockingWaiter> waiters = blockedClients.get(key);
+
+      while (waiters != null && !waiters.isEmpty() && !list.isEmpty()) {
+
+          BlockingWaiter waiter = waiters.poll();
+
+          synchronized (list) {
+              waiter.element = list.remove(0);
+          }
+
+          waiter.completed = true;
+      }
+
+      if (waiters != null && waiters.isEmpty()) {
+          blockedClients.remove(key);
+      }
+
+      blockingLock.notifyAll();
     }
 
     private static void handleClient(Socket clientSocket) {
@@ -172,11 +197,14 @@ public class Main {
 
                 }
 
-                // RPUSH
-                else if (commandName.equalsIgnoreCase("RPUSH")
-                        && command.size() >= 3) {
+               
+                  // RPUSH
+                  else if (commandName.equalsIgnoreCase("RPUSH")
+                    && command.size() >= 3) {
 
                     String key = command.get(1);
+
+                  synchronized (blockingLock) {
 
                     List<String> list = lists.computeIfAbsent(
                             key,
@@ -194,38 +222,47 @@ public class Main {
                         length = list.size();
                     }
 
+                    serveBlockedClients(key, list);
+
                     outputStream.write(
                             (":" + length + "\r\n").getBytes(StandardCharsets.UTF_8)
                     );
                 }
-                //LPush
+              }
 
-                  
-                  else if (commandName.equalsIgnoreCase("LPUSH")
-                    && command.size() >= 3) {
+                
+                      // LPUSH
+                      else if (commandName.equalsIgnoreCase("LPUSH")
+                        && command.size() >= 3) {
 
-                  String key = command.get(1);
+                    String key = command.get(1);
 
-                  List<String> list = lists.computeIfAbsent(
-                        key,
-                        k -> Collections.synchronizedList(new ArrayList<>())
-                  );
+                    synchronized (blockingLock) {
 
-                  int length;
+                        List<String> list = lists.computeIfAbsent(
+                                key,
+                                k -> Collections.synchronizedList(new ArrayList<>())
+                        );
 
-                  synchronized (list) {
+                        int length;
 
-                    for (int i = 2; i < command.size(); i++) {
-                        list.add(0, command.get(i));
+                        synchronized (list) {
+
+                            for (int i = 2; i < command.size(); i++) {
+                                list.add(0, command.get(i));
+                            }
+
+                            length = list.size();
+                        }
+
+                        serveBlockedClients(key, list);
+
+                        outputStream.write(
+                                (":" + length + "\r\n").getBytes(StandardCharsets.UTF_8)
+                        );
                     }
-
-                    length = list.size();
                   }
 
-                  outputStream.write(
-                        (":" + length + "\r\n").getBytes(StandardCharsets.UTF_8)
-                  );
-                  }
 
 
                 
