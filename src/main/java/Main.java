@@ -197,6 +197,35 @@ public class Main {
                             (":" + length + "\r\n").getBytes(StandardCharsets.UTF_8)
                     );
                 }
+                //LPush
+
+                  
+                  else if (commandName.equalsIgnoreCase("LPUSH")
+                    && command.size() >= 3) {
+
+                  String key = command.get(1);
+
+                  List<String> list = lists.computeIfAbsent(
+                        key,
+                        k -> Collections.synchronizedList(new ArrayList<>())
+                  );
+
+                  int length;
+
+                  synchronized (list) {
+
+                    for (int i = 2; i < command.size(); i++) {
+                        list.add(0, command.get(i));
+                    }
+
+                    length = list.size();
+                  }
+
+                  outputStream.write(
+                        (":" + length + "\r\n").getBytes(StandardCharsets.UTF_8)
+                  );
+                  }
+
 
                 // LRANGE
                 
