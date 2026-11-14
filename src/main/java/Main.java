@@ -9,13 +9,14 @@ import java.net.Socket;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class Main {
 
-    // Represents one Redis entry
+    // Represents one Redis string entry
     public static class RedisEntry {
         String value;
         long expiryTime;
@@ -26,8 +27,12 @@ public class Main {
         }
     }
 
-    // Shared storage for all clients
+    // Shared storage for Redis strings
     private static final Map<String, RedisEntry> storage =
+            new ConcurrentHashMap<>();
+
+    // Shared storage for Redis lists
+    private static final Map<String, List<String>> lists =
             new ConcurrentHashMap<>();
 
     public static void main(String[] args) {
@@ -103,10 +108,8 @@ public class Main {
                     String key = command.get(1);
                     String value = command.get(2);
 
-                    // Default: key never expires
                     long expiryTime = -1;
 
-                    // Check for PX option
                     if (command.size() == 5
                             && command.get(3).equalsIgnoreCase("PX")) {
 
@@ -154,7 +157,6 @@ public class Main {
                     } else if (entry.expiryTime != -1
                             && System.currentTimeMillis() >= entry.expiryTime) {
 
-                        // Remove expired key
                         storage.remove(key, entry);
 
                         outputStream.write(
@@ -166,6 +168,32 @@ public class Main {
                         writeBulkString(outputStream, entry.value);
 
                     }
+
+                }
+
+                // RPUSH
+                else if (commandName.equalsIgnoreCase("RPUSH")
+                        && command.size() == 3) {
+
+                    String key = command.get(1);
+                    String value = command.get(2);
+
+                    List<String> list = lists.computeIfAbsent(
+                            key,
+                            k -> Collections.synchronizedList(new ArrayList<>())
+                    );
+
+                    int length;
+
+                    synchronized (list) {
+                        list.add(value);
+                        length = list.size();
+                    }
+
+                    outputStream.write(
+                            (":" + length + "\r\n")
+                                    .getBytes(StandardCharsets.UTF_8)
+                    );
 
                 }
 
