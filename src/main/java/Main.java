@@ -227,7 +227,31 @@ public class Main {
                   }
 
 
-                // LRANGE
+                
+                 
+                // LLEN
+                else if (commandName.equalsIgnoreCase("LLEN")
+                  && command.size() == 2) {
+
+                String key = command.get(1);
+
+                List<String> list = lists.get(key);
+
+                int length;
+
+                if (list == null) {
+                  length = 0;
+                } else {
+                  synchronized (list) {
+                      length = list.size();
+                  }
+                }
+
+                outputStream.write(
+                      (":" + length + "\r\n").getBytes(StandardCharsets.UTF_8)
+                );
+                }
+
                 
                 // LRANGE
                 else if (commandName.equalsIgnoreCase("LRANGE")
