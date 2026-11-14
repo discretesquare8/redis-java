@@ -199,36 +199,57 @@ public class Main {
                 }
 
                 // LRANGE
+                
+                // LRANGE
                 else if (commandName.equalsIgnoreCase("LRANGE")
-                        && command.size() == 4) {
+                  && command.size() == 4) {
 
-                    String key = command.get(1);
+                String key = command.get(1);
 
-                    int start = Integer.parseInt(command.get(2));
-                    int stop = Integer.parseInt(command.get(3));
+                int start = Integer.parseInt(command.get(2));
+                int stop = Integer.parseInt(command.get(3));
 
-                    List<String> list = lists.get(key);
+                List<String> list = lists.get(key);
 
-                    if (list == null || start >= list.size() || start > stop) {
+                if (list == null) {
 
-                        writeArray(outputStream, Collections.emptyList());
+                  writeArray(outputStream, Collections.emptyList());
 
-                    } else {
+                } else {
 
-                        List<String> result = new ArrayList<>();
+                  List<String> result = new ArrayList<>();
 
-                        synchronized (list) {
+                  synchronized (list) {
 
-                            int end = Math.min(stop, list.size() - 1);
+                      int size = list.size();
 
-                            for (int i = start; i <= end; i++) {
-                                result.add(list.get(i));
-                            }
-                        }
+                      // Convert negative start index
+                      if (start < 0) {
+                          start = size + start;
+                      }
 
-                        writeArray(outputStream, result);
-                    }
+                      // Convert negative stop index
+                      if (stop < 0) {
+                          stop = size + stop;
+                      }
+
+                      // Handle indexes outside the list
+                      start = Math.max(0, start);
+                      stop = Math.min(size - 1, stop);
+
+                      // Check whether the requested range is valid
+                      if (start <= stop && start < size) {
+
+                          for (int i = start; i <= stop; i++) {
+                              result.add(list.get(i));
+                          }
+                      }
+                  }
+
+                  writeArray(outputStream, result);
                 }
+                }
+
 
                 // Unknown command
                 else {
