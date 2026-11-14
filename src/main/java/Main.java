@@ -172,30 +172,28 @@ public class Main {
                 }
 
                 // RPUSH
-                else if (commandName.equalsIgnoreCase("RPUSH")
-                        && command.size() == 3) {
+                
+                else if (commandName.equalsIgnoreCase("RPUSH") && command.size() >= 3) {
+                  String key = command.get(1);
 
-                    String key = command.get(1);
-                    String value = command.get(2);
+                  List<String> list = lists.computeIfAbsent(
+                          key,
+                          k -> Collections.synchronizedList(new ArrayList<>())
+                  );
 
-                    List<String> list = lists.computeIfAbsent(
-                            key,
-                            k -> Collections.synchronizedList(new ArrayList<>())
-                    );
+                  int length;
 
-                    int length;
+                  synchronized (list) {
+                      for (int i = 2; i < command.size(); i++) {
+                          list.add(command.get(i));
+                      }
 
-                    synchronized (list) {
-                        list.add(value);
-                        length = list.size();
-                    }
+                      length = list.size();
+                  }
 
-                    outputStream.write(
-                            (":" + length + "\r\n")
-                                    .getBytes(StandardCharsets.UTF_8)
-                    );
-
+                  outputStream.write((":" + length + "\r\n").getBytes(StandardCharsets.UTF_8));
                 }
+
 
                 // Unknown command
                 else {
