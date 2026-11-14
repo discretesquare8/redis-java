@@ -254,46 +254,69 @@ public class Main {
 
 
 
-                // LPOP
-                else if (commandName.equalsIgnoreCase("LPOP")
-                  && command.size() == 2) {
+                
+                  // LPOP
+                  else if (commandName.equalsIgnoreCase("LPOP")
+                    && (command.size() == 2 || command.size() == 3)) {
 
-                String key = command.get(1);
+                  String key = command.get(1);
 
-                List<String> list = lists.get(key);
+                  List<String> list = lists.get(key);
 
-                if (list == null) {
+                  // LPOP without count
+                  if (command.size() == 2) {
 
-                  outputStream.write(
-                          "$-1\r\n".getBytes(StandardCharsets.UTF_8)
-                  );
+                    if (list == null) {
 
-                } else {
+                        outputStream.write(
+                                "$-1\r\n".getBytes(StandardCharsets.UTF_8)
+                        );
 
-                  String removedElement;
+                    } else {
 
-                  synchronized (list) {
+                        String removedElement;
 
-                      if (list.isEmpty()) {
-                          removedElement = null;
-                      } else {
-                          removedElement = list.remove(0);
-                      }
+                        synchronized (list) {
+                            if (list.isEmpty()) {
+                                removedElement = null;
+                            } else {
+                                removedElement = list.remove(0);
+                            }
+                        }
+
+                        if (removedElement == null) {
+                            outputStream.write(
+                                    "$-1\r\n".getBytes(StandardCharsets.UTF_8)
+                            );
+                        } else {
+                            writeBulkString(outputStream, removedElement);
+                        }
+                    }
                   }
 
-                  if (removedElement == null) {
+                  // LPOP with count
+                  else {
 
-                      outputStream.write(
-                              "$-1\r\n".getBytes(StandardCharsets.UTF_8)
-                      );
+                    int count = Integer.parseInt(command.get(2));
 
-                  } else {
+                    List<String> removedElements = new ArrayList<>();
 
-                      writeBulkString(outputStream, removedElement);
+                    if (list != null) {
 
+                        synchronized (list) {
+
+                            int elementsToRemove = Math.min(count, list.size());
+
+                            for (int i = 0; i < elementsToRemove; i++) {
+                                removedElements.add(list.remove(0));
+                            }
+                        }
+                    }
+
+                    writeArray(outputStream, removedElements);
                   }
-                }
-                }
+                  }
+
 
 
                 
